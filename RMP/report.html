@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report — RMP Tracker</title>
+<script src="db.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #0369a1;
+  --accent:  #6366f1;
+  --green:   #16a34a;
+  --red:     #dc2626;
+  --border:  #e2e8f0;
+  --muted:   #64748b;
+  --radius:  12px;
+  --shadow:  0 2px 12px rgba(0,0,0,.07);
+}
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f4f8; min-height: 100vh; }
+
+.header {
+  background: linear-gradient(135deg, #0f172a, #0369a1);
+  padding: 16px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,.25);
+}
+.header-brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 900; font-size: 1rem; }
+.header-icon { width: 32px; height: 32px; border-radius: 8px; background: rgba(255,255,255,.2); display: flex; align-items: center; justify-content: center; }
+.btn-nav { color: rgba(255,255,255,.75); font-size: .8rem; font-weight: 600; text-decoration: none; }
+.btn-nav:hover { color: #fff; }
+
+/* PIN */
+#pin-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: linear-gradient(135deg, #0f172a, #0369a1);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+#pin-overlay.hidden { display: none; }
+.pin-card {
+  background: #fff; border-radius: 20px; padding: 36px 28px;
+  width: 100%; max-width: 340px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  display: flex; flex-direction: column; gap: 12px; align-items: center;
+}
+.pin-logo { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg,#0369a1,#6366f1); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+.pin-title { font-size: 1.1rem; font-weight: 800; color: #0f172a; }
+.pin-sub { font-size: .82rem; color: var(--muted); text-align: center; }
+.pin-card input { width: 100%; height: 42px; padding: 0 14px; border: 1.5px solid var(--border); border-radius: 9px; font-size: 14px; font-family: inherit; letter-spacing: 3px; text-align: center; }
+.pin-card input:focus { outline: none; border-color: var(--primary); }
+.pin-btn { width: 100%; height: 44px; background: linear-gradient(135deg,#0369a1,#6366f1); color: #fff; border: none; border-radius: 9px; font-size: .95rem; font-weight: 800; cursor: pointer; font-family: inherit; transition: opacity .2s; }
+.pin-btn:hover:not(:disabled) { opacity: .9; }
+.pin-btn:disabled { opacity: .6; cursor: default; }
+#pin-err { font-size: .78rem; color: var(--red); min-height: 16px; text-align: center; }
+
+/* Layout */
+.page { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+
+/* Toolbar */
+.toolbar { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 18px; overflow: hidden; }
+.toolbar-main { padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.toolbar-title { font-size: .88rem; font-weight: 900; color: var(--primary); }
+.btn-refresh { padding: 8px 16px; border-radius: 8px; border: 2px solid #bfdbfe; background: #fff; font-size: .78rem; font-weight: 700; color: var(--primary); cursor: pointer; font-family: inherit; transition: all .15s; }
+.btn-refresh:hover { background: #eff6ff; }
+.btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
+.filter-bar { background: #f8fafc; border-top: 1px solid var(--border); padding: 10px 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filter-label { font-size: .75rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.filter-sel { padding: 6px 10px; border-radius: 7px; border: 1.5px solid var(--border); font-size: .78rem; font-weight: 600; color: #1a1a2e; font-family: inherit; background: #fff; cursor: pointer; outline: none; }
+.filter-sel:focus { border-color: var(--primary); }
+
+/* Stat cards */
+.stat-row { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.stat-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 22px; min-width: 120px; flex: 1; }
+.stat-label { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stat-value { font-size: 1.8rem; font-weight: 900; margin-top: 4px; }
+.s1 .stat-value { color: var(--primary); }
+.s2 .stat-value { color: var(--accent); }
+.s3 .stat-value { color: #d97706; }
+.s4 .stat-value { color: var(--green); }
+
+/* Chart grid */
+.chart-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.chart-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 800px) { .chart-grid-2, .chart-grid-3 { grid-template-columns: 1fr; } }
+
+.chart-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 22px; }
+.chart-title { font-size: .85rem; font-weight: 800; color: #0f172a; margin-bottom: 16px; }
+
+/* Horizontal bar */
+.hbar-list { display: flex; flex-direction: column; gap: 9px; }
+.hbar-row { display: flex; align-items: center; gap: 8px; }
+.hbar-label { font-size: .76rem; font-weight: 600; color: #374151; width: 110px; text-align: right; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbar-track { flex: 1; background: #f1f5f9; border-radius: 50px; height: 18px; overflow: hidden; }
+.hbar-fill { height: 100%; border-radius: 50px; transition: width .4s; }
+.hbar-count { font-size: .76rem; font-weight: 700; width: 28px; flex-shrink: 0; text-align: right; }
+
+/* Donut SVG */
+.donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.donut-legend { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 120px; }
+.legend-row { display: flex; align-items: center; gap: 7px; font-size: .76rem; color: #374151; }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* AE Table */
+.ae-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.ae-table th { text-align: left; padding: 8px 10px; font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid var(--border); background: #f8fafc; }
+.ae-table th:not(:first-child) { text-align: center; }
+.ae-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; }
+.ae-table td:not(:first-child) { text-align: center; font-weight: 700; }
+.ae-table tr:last-child td { border-bottom: none; }
+.ae-table tr:hover td { background: #f8faff; }
+.ae-name { font-weight: 700; color: #0f172a; }
+.ae-sub  { font-size: .7rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- PIN OVERLAY -->
+<div id="pin-overlay">
+  <div class="pin-card">
+    <div class="pin-logo">📍</div>
+    <div class="pin-title">RMP Report</div>
+    <div class="pin-sub">Masukkan PIN untuk melihat laporan activity</div>
+    <input type="password" id="pin-input" inputmode="numeric" maxlength="8"
+           placeholder="Masukkan PIN"
+           onkeydown="if(event.key==='Enter') doLogin()">
+    <button class="pin-btn" onclick="doLogin()">Masuk</button>
+    <div id="pin-err"></div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-brand">
+    <div class="header-icon">📊</div>
+    RMP Report
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <button onclick="doLogout()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 12px;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Keluar</button>
+    <a href="index.html" class="btn-nav">&#8592; Beranda</a>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-main">
+      <span class="toolbar-title">📊 Report & Analitik Activity</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="last-updated" style="font-size:.7rem;color:#94a3b8"></span>
+        <button class="btn-refresh" id="btn-refresh" onclick="loadData()">↺ Refresh</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <span class="filter-label">City:</span>
+      <select class="filter-sel" id="fCity" onchange="onCityFilter()"><option value="">Semua</option></select>
+      <span class="filter-label">TSC:</span>
+      <select class="filter-sel" id="fTSC" onchange="render()"><option value="">Semua</option></select>
+      <span class="filter-label">SPV:</span>
+      <select class="filter-sel" id="fSPV" onchange="render()"><option value="">Semua</option></select>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stat-row">
+    <div class="stat-card s1"><div class="stat-label">Total Activity</div><div class="stat-value" id="st-total">—</div></div>
+    <div class="stat-card s2"><div class="stat-label">Total AE Aktif</div><div class="stat-value" id="st-ae">—</div></div>
+    <div class="stat-card s3"><div class="stat-label">ISP Terbanyak</div><div class="stat-value" id="st-isp" style="font-size:.95rem;padding-top:10px">—</div></div>
+    <div class="stat-card s4"><div class="stat-label">Budget Terbanyak</div><div class="stat-value" id="st-budget" style="font-size:.85rem;padding-top:10px">—</div></div>
+  </div>
+
+  <!-- ROW 1: ISP + Contract Period -->
+  <div class="chart-grid-2">
+    <div class="chart-card">
+      <div class="chart-title">📡 Distribusi Current ISP</div>
+      <div class="donut-wrap">
+        <svg id="donut-isp" width="120" height="120" viewBox="0 0 120 120"></svg>
+        <div class="donut-legend" id="legend-isp"></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">📅 Contract Period</div>
+      <div class="hbar-list" id="chart-contract"></div>
+    </div>
+  </div>
+
+  <!-- ROW 2: Budget + Family Needs -->
+  <div class="chart-grid-2">
+    <div class="chart-card">
+      <div class="chart-title">💰 Distribusi Budget</div>
+      <div class="hbar-list" id="chart-budget"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">👨‍👩‍👧 Family Needs</div>
+      <div class="hbar-list" id="chart-family"></div>
+    </div>
+  </div>
+
+  <!-- ROW 3: AE Leaderboard -->
+  <div class="chart-card" style="margin-bottom:16px">
+    <div class="chart-title">🏆 Performa per AE</div>
+    <div style="overflow-x:auto">
+      <table class="ae-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>AE</th>
+            <th>City / TSC / SPV</th>
+            <th>Total</th>
+            <th>Tanpa ISP</th>
+            <th>ISP Aktif</th>
+          </tr>
+        </thead>
+        <tbody id="ae-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SK_PIN    = 'rmp_pin';
+let allData     = [];
+
+const ISP_COLORS = [
+  '#0369a1','#6366f1','#d97706','#16a34a','#dc2626',
+  '#0891b2','#7c3aed','#ea580c','#65a30d','#db2777',
+];
+
+// ── Auth ──────────────────────────────────────────────────────────
+async function doLogin() {
+  const pin = document.getElementById('pin-input').value.trim();
+  const err = document.getElementById('pin-err');
+  const btn = document.querySelector('.pin-btn');
+  err.textContent = '';
+  if (!pin) { err.textContent = 'Masukkan PIN terlebih dahulu.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Memverifikasi…';
+  const ok = await DB_RMP.verifyPin(pin);
+  btn.disabled = false; btn.textContent = 'Masuk';
+  if (ok) {
+    sessionStorage.setItem(SK_PIN, pin);
+    DB_RMP.setPin(pin);
+    document.getElementById('pin-overlay').classList.add('hidden');
+    loadData();
+  } else {
+    err.textContent = 'PIN salah.';
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-input').focus();
+  }
+}
+
+function doLogout() { sessionStorage.removeItem(SK_PIN); location.reload(); }
+
+async function init() {
+  const saved = sessionStorage.getItem(SK_PIN);
+  if (saved) {
+    const ok = await DB_RMP.verifyPin(saved);
+    if (ok) {
+      DB_RMP.setPin(saved);
+      document.getElementById('pin-overlay').classList.add('hidden');
+      loadData();
+      return;
+    }
+    sessionStorage.removeItem(SK_PIN);
+  }
+}
+
+// ── Load ──────────────────────────────────────────────────────────
+async function loadData() {
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = true;
+  showLoading(true);
+  const data = await DB_RMP.getActivities();
+  showLoading(false);
+  btn.disabled = false;
+  if (data === null) { showToast('Gagal memuat data.', 'error'); return; }
+  allData = data;
+  document.getElementById('last-updated').textContent =
+    'Diperbarui: ' + new Date().toLocaleTimeString('id-ID');
+  buildFilters();
+  render();
+}
+
+function buildFilters() {
+  fillSel('fCity', [...new Set(allData.map(r => r['City']).filter(Boolean))].sort());
+}
+
+function fillSel(id, opts) {
+  const el = document.getElementById(id);
+  const prev = el.value;
+  el.innerHTML = '<option value="">Semua</option>';
+  opts.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = opt.textContent = o;
+    el.appendChild(opt);
+  });
+  if (prev) el.value = prev;
+}
+
+function onCityFilter() {
+  const city = document.getElementById('fCity').value;
+  const tscs = city
+    ? [...new Set(allData.filter(r => r['City'] === city).map(r => r['TSC']).filter(Boolean))].sort()
+    : [...new Set(allData.map(r => r['TSC']).filter(Boolean))].sort();
+  fillSel('fTSC', tscs);
+  const spvs = [...new Set(allData.filter(r => !city || r['City'] === city).map(r => r['SPV']).filter(Boolean))].sort();
+  fillSel('fSPV', spvs);
+  render();
+}
+
+function getFiltered() {
+  const city = document.getElementById('fCity').value;
+  const tsc  = document.getElementById('fTSC').value;
+  const spv  = document.getElementById('fSPV').value;
+  return allData.filter(r =>
+    (!city || r['City'] === city) &&
+    (!tsc  || r['TSC']  === tsc) &&
+    (!spv  || r['SPV']  === spv)
+  );
+}
+
+// ── Render all charts ─────────────────────────────────────────────
+function render() {
+  const d = getFiltered();
+  renderStats(d);
+  renderDonutISP(d);
+  renderHBar('chart-contract', d, 'Contract Period', '#6366f1');
+  renderHBar('chart-budget',   d, 'Budget',          '#16a34a');
+  renderHBar('chart-family',   d, 'Family Needs',    '#d97706');
+  renderAETable(d);
+}
+
+function renderStats(d) {
+  const aeSet = new Set(d.map(r => r['AE']).filter(Boolean));
+  const ispCount = {};
+  const budgetCount = {};
+  d.forEach(r => {
+    const v = r['Current ISP']; if (v) ispCount[v] = (ispCount[v]||0)+1;
+    const b = r['Budget'];       if (b) budgetCount[b] = (budgetCount[b]||0)+1;
+  });
+  const topISP    = Object.keys(ispCount).sort((a,b) => ispCount[b]-ispCount[a])[0]    || '—';
+  const topBudget = Object.keys(budgetCount).sort((a,b) => budgetCount[b]-budgetCount[a])[0] || '—';
+  document.getElementById('st-total').textContent  = d.length;
+  document.getElementById('st-ae').textContent     = aeSet.size;
+  document.getElementById('st-isp').textContent    = topISP;
+  document.getElementById('st-budget').textContent = topBudget;
+}
+
+// ── Donut chart for ISP ───────────────────────────────────────────
+function renderDonutISP(d) {
+  const counts = {};
+  d.forEach(r => { const v = r['Current ISP']; if (v) counts[v] = (counts[v]||0)+1; });
+  const total  = d.length || 1;
+  const sorted = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+
+  let paths = '', angle = -90;
+  const R = 48, cx = 60, cy = 60, ri = 28;
+  const legend = document.getElementById('legend-isp');
+  legend.innerHTML = '';
+
+  sorted.forEach((k, idx) => {
+    const pct = counts[k] / total;
+    const a1  = (angle * Math.PI) / 180;
+    const a2  = ((angle + pct * 360) * Math.PI) / 180;
+    const lx1 = cx + R * Math.cos(a1), ly1 = cy + R * Math.sin(a1);
+    const lx2 = cx + R * Math.cos(a2), ly2 = cy + R * Math.sin(a2);
+    const li1 = cx + ri * Math.cos(a1), li1y = cy + ri * Math.sin(a1);
+    const li2 = cx + ri * Math.cos(a2), li2y = cy + ri * Math.sin(a2);
+    const large = pct > 0.5 ? 1 : 0;
+    const color = ISP_COLORS[idx % ISP_COLORS.length];
+    paths += `<path d="M${li1},${li1y} L${lx1},${ly1} A${R},${R},0,${large},1,${lx2},${ly2} L${li2},${li2y} A${ri},${ri},0,${large},0,${li1},${li1y} Z" fill="${color}" opacity=".9"/>`;
+    angle += pct * 360;
+
+    legend.innerHTML += `<div class="legend-row">
+      <div class="legend-dot" style="background:${color}"></div>
+      <span><strong>${counts[k]}</strong> ${esc(k)}</span>
+    </div>`;
+  });
+
+  document.getElementById('donut-isp').innerHTML = paths ||
+    '<circle cx="60" cy="60" r="48" fill="#f1f5f9"/>';
+}
+
+// ── Horizontal bar chart ──────────────────────────────────────────
+function renderHBar(id, d, field, color) {
+  const counts = {};
+  d.forEach(r => { const v = r[field]; if (v) counts[v] = (counts[v]||0)+1; });
+  const sorted = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+  const max = sorted.length ? counts[sorted[0]] : 1;
+
+  document.getElementById(id).innerHTML = sorted.length
+    ? sorted.map(k => `
+        <div class="hbar-row">
+          <div class="hbar-label" title="${esc(k)}">${esc(k)}</div>
+          <div class="hbar-track">
+            <div class="hbar-fill" style="width:${(counts[k]/max*100).toFixed(1)}%;background:${color}"></div>
+          </div>
+          <div class="hbar-count" style="color:${color}">${counts[k]}</div>
+        </div>`).join('')
+    : '<p style="color:var(--muted);font-size:.82rem">Belum ada data</p>';
+}
+
+// ── AE leaderboard table ──────────────────────────────────────────
+function renderAETable(d) {
+  const map = {};
+  d.forEach(r => {
+    const ae = r['AE'] || '—';
+    if (!map[ae]) map[ae] = { total: 0, noIsp: 0, hasIsp: 0, city: r['City']||'', tsc: r['TSC']||'', spv: r['SPV']||'' };
+    map[ae].total++;
+    const isp = (r['Current ISP'] || '').toLowerCase();
+    if (isp === 'tidak ada isp' || !isp) map[ae].noIsp++;
+    else map[ae].hasIsp++;
+  });
+
+  const rows = Object.keys(map).sort((a,b) => map[b].total - map[a].total);
+  document.getElementById('ae-tbody').innerHTML = rows.length
+    ? rows.map((ae, i) => {
+        const m = map[ae];
+        return `<tr>
+          <td style="color:var(--muted);font-size:.74rem">${i+1}</td>
+          <td><div class="ae-name">${esc(ae)}</div></td>
+          <td><div class="ae-sub">${esc(m.city)} · ${esc(m.tsc)} · ${esc(m.spv)}</div></td>
+          <td style="color:var(--primary)">${m.total}</td>
+          <td style="color:#d97706">${m.noIsp || '—'}</td>
+          <td style="color:var(--green)">${m.hasIsp || '—'}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Belum ada data</td></tr>';
+}
+
+init();
+</script>
+</body>
+</html>
